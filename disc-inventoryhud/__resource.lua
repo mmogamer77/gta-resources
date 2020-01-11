@@ -1,9 +1,15 @@
-resource_manifest_version "44febabe-d386-4d18-afbe-5e627f4af937"
+resource_manifest_version '05cfa83c-a124-4cfa-a768-c24a5811d8f9'
+
+description 'Disc InventoryHud'
+
+version '0.4.2'
 
 ui_page 'html/ui.html'
 
 client_scripts {
+    '@es_extended/locale.lua',
     'client/main.lua',
+    'config.lua',
     'client/actions.lua',
     'client/inventory.lua',
     'client/drop.lua',
@@ -11,13 +17,19 @@ client_scripts {
     'client/glovebox.lua',
     'client/shop.lua',
     'client/weapons.lua',
+    'client/search.lua',
+    'client/stash.lua',
     'common/drop.lua',
-    'config.lua',
-    'utils.lua'
+    'common/weapons.lua',
+    'utils.lua',
+    'locales/cs.lua',
+    'locales/en.lua',
 }
 
 server_scripts {
+    '@es_extended/locale.lua',
     'server/main.lua',
+    'config.lua',
     '@mysql-async/lib/MySQL.lua',
     'server/actions.lua',
     'server/inventory.lua',
@@ -27,9 +39,14 @@ server_scripts {
     'server/glovebox.lua',
     'server/shop.lua',
     'server/weapons.lua',
+    'server/search.lua',
+    'server/stash.lua',
+    'server/itemdata.lua',
     'common/drop.lua',
-    'config.lua',
-    'utils.lua'
+    'common/weapons.lua',
+    'utils.lua',
+    'locales/cs.lua',
+    'locales/en.lua',
 }
 
 files {
@@ -44,12 +61,14 @@ files {
     'html/js/bootstrap.min.js',
     'html/js/popper.min.js',
 
+    -- JS langs
+    'html/locales/cs.js',
+    'html/locales/en.js',
     -- IMAGES
-    'html/img/bullet.png',
-    'html/img/cash.png',
-    'html/img/bank.png',
+    'html/img/*.png',
     'html/success.wav',
     'html/fail.wav',
+    'html/fail2.wav',
     -- ICONS
 
     'html/img/items/*.png',

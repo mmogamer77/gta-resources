@@ -40,9 +40,9 @@ AddEventHandler('disc-ammo:useAmmoItem', function(ammo)
                 end
                 SetPedAmmo(playerPed, weapon, newAmmo)
                 TriggerServerEvent('disc-ammo:removeAmmoItem', ammo)
-                exports['mythic_notify']:DoHudText('success', 'Reloaded')
+                exports['mythic_notify']:SendAlert('success', 'Reloaded')
             else
-                exports['mythic_notify']:DoHudText('error', 'Max Ammo')
+                exports['mythic_notify']:SendAlert('error', 'Max Ammo')
             end
         end
     end
@@ -51,7 +51,7 @@ end)
 Citizen.CreateThread(function()
     while true do
         Citizen.Wait(0)
-        local found, currentWeapon = GetCurrentPedWeapon(GetPlayerPed(-1))
-        DisplayAmmoThisFrame(found)
+        local currentWeapon = GetSelectedPedWeapon(GetPlayerPed(-1)) --morpheause show ammo fix
+        DisplayAmmoThisFrame(currentWeapon)
     end
 end)

@@ -28,11 +28,11 @@ Citizen.CreateThread(function()
 end)
 
 function canSell(pedId)
-    return hasDrugs ~= nill and hasDrugs and not IsPedSittingInAnyVehicle(pedId)
+    return hasDrugs ~= nil and hasDrugs and not IsPedSittingInAnyVehicle(pedId)
 end
 
 function CanSellTo(pedId)
-    return DoesEntityExist(pedId) and not IsPedDeadOrDying(pedId) and not IsPedAPlayer(pedId) and not IsPedFalling(pedId) and not cachedPeds[pedId]
+    return DoesEntityExist(pedId) and not IsPedDeadOrDying(pedId) and not IsPedAPlayer(pedId) and not IsPedFalling(pedId) and not cachedPeds[pedId] and not IsEntityAMissionEntity(ped)
 end
 
 function GetPedInFront()
@@ -54,7 +54,7 @@ Citizen.CreateThread(function()
         local closestPed = GetPedInFront()
         local closestpedCoords = GetEntityCoords(closestPed)
         local dist = GetDistanceBetweenCoords(pedCoords.x, pedCoords.y, pedCoords.z, closestpedCoords.x, closestpedCoords.y, closestpedCoords.z, true)
-        if dist <= pedCoords.x then
+        if dist <= 2 then
 
             local cs = canSell(PlayerPedId())
             local cst = CanSellTo(closestPed)
@@ -67,13 +67,13 @@ Citizen.CreateThread(function()
                 ESX.TriggerServerCallback('disc-drugsales:getOnlinePolice',
                         function(online)
                             if Config.CopsNeeded > online then
-                                exports['mythic_notify']:DoHudText('error', "Not enough cops in town! Need " .. Config.CopsNeeded)
+                                exports['mythic_notify']:SendAlert('error', "Not enough cops in town! Need " .. Config.CopsNeeded)
                             else
                                 if not cachedPeds[closestPed] then
                                     showNotification = false
                                     TryToSell(closestPed, pedCoords)
                                 else
-                                    exports['mythic_notify']:DoHudText('inform', "You've already talked to me? Don't come up to me again.")
+                                    exports['mythic_notify']:SendAlert('inform', "You've already talked to me? Don't come up to me again.")
                                 end
                             end
                         end)
@@ -92,9 +92,9 @@ Citizen.CreateThread(function()
         ESX.TriggerServerCallback('disc-drugsales:hasDrugs', function(hD)
             if hasDrugs ~= hD then
                 if hD then
-                    exports['mythic_notify']:DoHudText('inform', "You have drugs!")
+                    exports['mythic_notify']:SendAlert('inform', "You have drugs!")
                 else
-                    exports['mythic_notify']:DoHudText('inform', "Your drugs are done!")
+                    exports['mythic_notify']:SendAlert('inform', "Your drugs are done!")
                 end
                 hasDrugs = hD
             end

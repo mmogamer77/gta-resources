@@ -1,6 +1,6 @@
 Citizen.CreateThread(function()
     Citizen.Wait(0)
-    MySQL.Async.fetchAll('SELECT * FROM items WHERE name LIKE \'WEAPON_%\'', {}, function(results)
+    MySQL.Async.fetchAll('SELECT * FROM items WHERE LCASE(name) LIKE \'%weapon_%\'', {}, function(results)
         for k, v in pairs(results) do
             ESX.RegisterUsableItem(v.name, function(source)
                 TriggerClientEvent('disc-inventoryhud:useWeapon', source, v.name)
@@ -34,9 +34,11 @@ ESX.RegisterServerCallback('disc-inventoryhud:getAmmoCount', function(source, cb
         ['@hash'] = hash
     }, function(results)
         if #results == 0 then
-            cb(0)
+            cb(nil)
         else
             cb(results[1].count)
         end
     end)
 end)
+
+

@@ -1,15 +1,19 @@
 var type = "normal";
 var firstTier = 1;
 var firstUsed = 0;
-var firstItems = new Array();
+var firstItems = [];
 var secondTier = 1;
 var secondUsed = 0;
-var secondItems = new Array();
+var secondItems = [];
 var errorHighlightTimer = null;
+var originOwner = false;
+var destinationOwner = false;
+var locked = false
 
-var dragging = false
+var dragging = false;
 var origDrag = null;
 var draggingItem = null;
+var givingItem = null;
 var mousedown = false;
 var docWidth = document.documentElement.clientWidth;
 var docHeight = document.documentElement.clientHeight;
@@ -25,7 +29,7 @@ successAudio.src = './success.wav';
 var failAudio = document.createElement('audio');
 failAudio.controls = false;
 failAudio.volume = 0.1;
-failAudio.src = './fail.wav';
+failAudio.src = './fail2.wav';
 
 window.addEventListener("message", function (event) {
     if (event.data.action == "display") {
@@ -36,48 +40,52 @@ window.addEventListener("message", function (event) {
         } else if (type === "secondary") {
             $('#inventoryTwo').parent().show();
         }
+        $('#seize').addClass('hidden');
+        $('#steal').addClass('hidden');
 
         $(".ui").fadeIn();
     } else if (event.data.action == "hide") {
-        $("#dialog").dialog("close");
-        $(".ui").fadeOut();
+        if (event.data.type == 'secondary') {
+            $('#inventoryTwo').parent().hide();
+        } else {
+            $("#dialog").dialog("close");
+            $(".ui").fadeOut();
+        }
     } else if (event.data.action == "setItems") {
         firstTier = event.data.invTier;
+        originOwner = event.data.invOwner;
         inventorySetup(event.data.invOwner, event.data.itemList, event.data.money, event.data.invTier);
     } else if (event.data.action == "setSecondInventoryItems") {
         secondTier = event.data.invTier;
-        secondInventorySetup(event.data.invOwner, event.data.itemList, event.data.invTier);
+        destinationOwner = event.data.invOwner;
+        secondInventorySetup(event.data.invOwner, event.data.itemList, event.data.invTier, event.data.money);
     } else if (event.data.action == "setInfoText") {
         $(".info-div").html(event.data.text);
     } else if (event.data.action == "nearPlayersGive" || event.data.action == "nearPlayersPay") {
-        $("#nearPlayers").html("");
-
+        successAudio.play();
+        givingItem = event.data.originItem;
+        $('.near-players-wrapper').find('.popup-body').html('');
         $.each(event.data.players, function (index, player) {
-            $("#nearPlayers").append('<button class="nearbyPlayerButton" data-player="' + player.player + '">' + player.label + ' (' + player.player + ')</button>');
+            $('.near-players-list .popup-body').append(`<div class="player" data-id="${player.id}" data-action="${event.data.action}">${player.id} - ${player.name}</div>`);
         });
-
-        $("#dialog").dialog("open");
-        let count = parseInt($("#count").val());
-
-
-        $(".nearbyPlayerButton").click(function () {
-            $("#dialog").dialog("close");
-            player = $(this).data("player");
-            if (event.data.action == "nearPlayersGive") {
-                $.post("http://disc-inventoryhud/GiveItem", JSON.stringify({
-                    player: player,
-                    item: event.data.item,
-                    number: count
-                }));
-            } else if (event.data.action == "nearPlayersPay") {
-                $.post("http://disc-inventoryhud/GiveCash", JSON.stringify({
-                    player: player,
-                    item: 'cash',
-                    number: count
-                }));
-            }
-        });
+        $('.near-players-wrapper').fadeIn();
+        EndDragging();
+    } else if (event.data.action == 'showSeize') {
+        $('#seize').removeClass('hidden')
+    } else if (event.data.action == 'showSteal') {
+        $('#steal').removeClass('hidden')
+    } else if (event.data.action == 'itemUsed') {
+        ItemUsed(event.data.alerts);
+    } else if (event.data.action == 'showActionBar') {
+        ActionBar(event.data.items);
+    } else if (event.data.action == 'actionbarUsed') {
+        ActionBarUsed(event.data.index);
+    } else if (event.data.action == 'unlock') {
+        UnlockInventory()
+    } else if (event.data.action == 'lock') {
+        LockInventory()
     }
+
 });
 
 function formatCurrency(x) {
@@ -98,6 +106,7 @@ function EndDragging() {
 function closeInventory() {
     InventoryLog('Closing');
     EndDragging();
+    $('.near-players-wrapper').fadeOut();
     $.post("http://disc-inventoryhud/NUIFocusOff", JSON.stringify({}));
 }
 
@@ -110,6 +119,7 @@ function inventorySetup(invOwner, items, money, invTier) {
 
     $('#cash').html('<img src="img/cash.png" class="moneyIcon"> $' + formatCurrency(money.cash));
     $('#bank').html('<img src="img/bank.png" class="moneyIcon"> $' + formatCurrency(money.bank));
+    $('#black_money').html('<img src="img/black_money.png" class="moneyIcon"> $' + formatCurrency(money.black_money));
 
     firstUsed = 0;
     $.each(items, function (index, item) {
@@ -130,12 +140,15 @@ function inventorySetup(invOwner, items, money, invTier) {
     })
 }
 
-function secondInventorySetup(invOwner, items, invTier) {
+function secondInventorySetup(invOwner, items, invTier, money) {
     setupSecondarySlots(invOwner);
     $('#other-inv-label').html(secondTier.label);
     $('#other-inv-id').html(invOwner);
     $('#inventoryTwo').data('invOwner', invOwner);
     $('#inventoryTwo').data('invTier', invTier);
+    $('#second-title').html(secondTier.label);
+    $('#second-cash').html('<img src="img/cash.png" class="moneyIcon"> $' + formatCurrency(money.cash));
+    $('#second-black_money').html('<img src="img/black_money.png" class="moneyIcon"> $' + formatCurrency(money.black_money));
     secondUsed = 0;
     $.each(items, function (index, item) {
         var slot = $('#inventoryTwo').find('.slot').filter(function () {
@@ -162,7 +175,6 @@ function setupPlayerSlots() {
         $('#inventoryOne').find('.slot-template').data('inventory', 'inventoryOne');
         $('#inventoryOne').find('.slot-template').removeClass('slot-template');
     }
-    ;
 }
 
 function setupSecondarySlots(owner) {
@@ -215,15 +227,16 @@ $('#count').on('keyup blur', function (e) {
 });
 
 $(document).ready(function () {
-    $('#inventoryTwo').parent().hide();
 
     $('#inventoryOne, #inventoryTwo').on('click', '.slot', function (e) {
+        if (locked) {
+            return
+        }
+
         itemData = $(this).find('.item').data('item');
         if (itemData == null && !dragging) {
             return
         }
-        ;
-
         if (dragging) {
             if ($(this).data('slot') !== undefined && $(origDrag).data('slot') !== $(this).data('slot') || $(this).data('slot') !== undefined && $(origDrag).data('invOwner') !== $(this).parent().data('invOwner')) {
                 if ($(this).find('.item').data('item') !== undefined) {
@@ -238,7 +251,7 @@ $(document).ready(function () {
         } else {
             if (itemData !== undefined) {
                 // Store a reference because JS is retarded
-                origDrag = $(this)
+                origDrag = $(this);
                 AddItemToSlot(origDrag, itemData);
                 $(origDrag).data('slot', $(this).data('slot'));
                 $(origDrag).data('invOwner', $(this).parent().data('invOwner'));
@@ -261,6 +274,10 @@ $(document).ready(function () {
                     $("#use").addClass("disabled");
                 }
 
+                if (!itemData.giveable) {
+                    $("#give").addClass("disabled");
+                }
+
                 if (!itemData.canRemove) {
                     $("#drop").addClass("disabled");
                     $("#give").addClass("disabled");
@@ -273,52 +290,83 @@ $(document).ready(function () {
 
     $('.close-ui').click(function (event, ui) {
         closeInventory();
-    })
+    });
 
     $('#use').click(function (event, ui) {
         if (dragging) {
             itemData = $(draggingItem).find('.item').data("item");
             if (itemData.usable) {
-                InventoryLog('Using ' + itemData.label);
+                InventoryLog('Using ' + itemData.label + ' and Close ' + itemData.closeUi);
                 $.post("http://disc-inventoryhud/UseItem", JSON.stringify({
                     owner: $(draggingItem).parent().data('invOwner'),
+                    slot: $(draggingItem).data('slot'),
                     item: itemData
-                }), function (closeUi) {
-                    if (closeUi) {
-                        closeInventory();
-                    }
-                });
+                }));
+                if (itemData.closeUi) {
+                    closeInventory();
+                }
                 successAudio.play();
+                EndDragging();
             } else {
                 failAudio.play();
             }
-            EndDragging();
         }
     });
 
     $("#use").mouseenter(function () {
-        if (!$(this).hasClass('disabled')) {
+        if (draggingItem != null && !$(this).hasClass('disabled')) {
             $(this).addClass('hover');
         }
     }).mouseleave(function () {
         $(this).removeClass('hover');
     });
 
+    $("#take").mouseenter(function () {
+        $(this).addClass('hover');
+    }).mouseleave(function () {
+        $(this).removeClass('hover');
+    }).click(function (event, ui) {
+        successAudio.play();
+        $('.near-players-wrapper').find('.popup-body').html('');
+        $('.near-players-wrapper').find('.popup-body').html('');
+        $('.near-players-list .popup-body').append(`<div class="cashtake" data-id="cash">Cash</div>`);
+        $('.near-players-list .popup-body').append(`<div class="cashtake" data-id="black_money">Black Money</div>`);
+        $('.near-players-wrapper').fadeIn();
+        EndDragging();
+    });
+
+    $("#store").mouseenter(function () {
+        $(this).addClass('hover');
+    }).mouseleave(function () {
+        $(this).removeClass('hover');
+    }).click(function (event, ui) {
+        successAudio.play();
+        $('.near-players-wrapper').find('.popup-body').html('');
+        $('.near-players-wrapper').find('.popup-body').html('');
+        $('.near-players-list .popup-body').append(`<div class="cashstore" data-id="cash">Cash</div>`);
+        $('.near-players-list .popup-body').append(`<div class="cashstore" data-id="black_money">Black Money</div>`);
+        $('.near-players-wrapper').fadeIn();
+        EndDragging();
+    });
+
     $('#give').click(function (event, ui) {
-        if (dragging) {
+        if (draggingItem != null && dragging) {
             itemData = $(draggingItem).find('.item').data("item");
-            let count = parseInt($("#count").val());
+            let dropCount = parseInt($("#count").val());
+
+            if (dropCount === 0 || dropCount > itemData.qty) {
+                dropCount = itemData.qty
+            }
+
             if (itemData.canRemove) {
-                InventoryLog('Giving ' + count + ' ' + itemData.label + ' To Nearby Player');
                 $.post("http://disc-inventoryhud/GetNearPlayers", JSON.stringify({
-                    action: 'give',
-                    item: itemData
+                    originItem: itemData,
+                    action: 'give'
                 }));
-                successAudio.play();
+
             } else {
                 failAudio.play();
             }
-            EndDragging();
         }
     });
 
@@ -330,19 +378,45 @@ $(document).ready(function () {
         $(this).removeClass('hover');
     });
 
-    let pay = $("#pay");
-    pay.mouseenter(function () {
+    $("#pay").mouseenter(function () {
         if (!$(this).hasClass('disabled')) {
             $(this).addClass('hover');
         }
     }).mouseleave(function () {
         $(this).removeClass('hover');
+    }).click(function (event, ui) {
+        successAudio.play();
+        $('.near-players-wrapper').find('.popup-body').html('');
+        $('.near-players-list .popup-body').append(`<div class="cashchoice" data-id="cash">Cash</div>`);
+        $('.near-players-list .popup-body').append(`<div class="cashchoice" data-id="black_money">Black Money</div>`);
+        $('.near-players-wrapper').fadeIn();
+        EndDragging();
     });
 
-    pay.click(function (event, ui) {
-        $.post("http://disc-inventoryhud/GetNearPlayers", JSON.stringify({
-            action: 'pay',
-            item: 'cash',
+    $("#seize").mouseenter(function () {
+        if (!$(this).hasClass('disabled')) {
+            $(this).addClass('hover');
+        }
+    }).mouseleave(function () {
+        $(this).removeClass('hover');
+    }).click(function (event, ui) {
+        InventoryLog('Seizing Cash from ' + destinationOwner);
+        $.post("http://disc-inventoryhud/SeizeCash", JSON.stringify({
+            target: destinationOwner
+        }));
+    });
+
+
+    $("#steal").mouseenter(function () {
+        if (!$(this).hasClass('disabled')) {
+            $(this).addClass('hover');
+        }
+    }).mouseleave(function () {
+        $(this).removeClass('hover');
+    }).click(function (event, ui) {
+        InventoryLog('Stealing Cash from ' + destinationOwner);
+        $.post("http://disc-inventoryhud/StealCash", JSON.stringify({
+            target: destinationOwner
         }));
     });
 
@@ -382,14 +456,26 @@ $(document).ready(function () {
         if (itemData !== undefined) {
             $('.tooltip-div').find('.tooltip-name').html(itemData.label);
 
-            if (itemData.unique === 0) {
+            if (!itemData.unique) {
                 if (itemData.stackable) {
-                    $('.tooltip-div').find('.tooltip-uniqueness').html("Not Unique - Stack Max(" + itemData.max + ")");
+                    $('.tooltip-div').find('.tooltip-uniqueness').html("Not Unique - Stack Max (" + itemData.max + ")");
                 } else {
                     $('.tooltip-div').find('.tooltip-uniqueness').html("Not Unique - Not Stackable");
                 }
             } else {
                 $('.tooltip-div').find('.tooltip-uniqueness').html("Unique (" + itemData.max + ")");
+            }
+
+            if (itemData.description !== undefined) {
+                $('.tooltip-div').find('.tooltip-desc').html('Description: ' + itemData.description);
+            } else {
+                $('.tooltip-div').find('.tooltip-desc').html("This Item Has No Information");
+            }
+
+            if (itemData.weight !== undefined) {
+                $('.tooltip-div').find('.tooltip-weight').html('Weight: ' + itemData.weight * itemData.qty);
+            } else {
+                $('.tooltip-div').find('.tooltip-weight').hide()
             }
 
             if (itemData.staticMeta !== undefined || itemData.staticMeta !== "") {
@@ -436,8 +522,40 @@ $(document).ready(function () {
     });
 });
 
+$('.popup-body').on('click', '.cashchoice', function () {
+    $.post("http://disc-inventoryhud/GetNearPlayers", JSON.stringify({
+        action: 'pay',
+        originItem: $(this).data("id")
+    }));
+});
+
+$('.popup-body').on('click', '.cashstore', function () {
+    $.post("http://disc-inventoryhud/CashStore", JSON.stringify({
+        action: 'cashstore',
+        item: $(this).data("id"),
+        count: parseInt($("#count").val()),
+        owner: destinationOwner,
+        destinationTier: secondTier
+    }), function(status){
+        $('.near-players-wrapper').fadeOut();
+    });
+});
+
+$('.popup-body').on('click', '.cashtake', function () {
+    $.post("http://disc-inventoryhud/CashTake", JSON.stringify({
+        action: 'cashtake',
+        item: $(this).data("id"),
+        count: parseInt($("#count").val()),
+        owner: destinationOwner,
+        destinationTier: secondTier
+    }), function(status){
+        $('.near-players-wrapper').fadeOut();
+    });
+});
+
+
 function AttemptDropInEmptySlot(origin, destination, moveQty) {
-    var result = ErrorCheck(origin, destination, moveQty)
+    var result = ErrorCheck(origin, destination, moveQty);
     if (result === -1) {
         $('.slot.error').removeClass('error');
         var item = origin.find('.item').data('item');
@@ -468,6 +586,7 @@ function AttemptDropInEmptySlot(origin, destination, moveQty) {
                 destinationTier: destination.parent().data('invTier'),
                 destinationItem: destination.find('.item').data('item'),
             }));
+            LockInventory();
         } else {
             var item2 = Object.create(item);
             item2.slot = destination.data('slot');
@@ -489,6 +608,7 @@ function AttemptDropInEmptySlot(origin, destination, moveQty) {
                 destinationItem: destination.find('.item').data('item'),
                 moveQty: moveQty,
             }));
+            LockInventory();
         }
     } else {
         failAudio.play();
@@ -541,9 +661,10 @@ function AttemptDropInOccupiedSlot(origin, destination, moveQty) {
                     destinationTier: destination.parent().data('invTier'),
                     moveQty: moveQty,
                 }));
+                LockInventory();
             } else {
                 if (destinationItem.qty === destinationItem.max) {
-                    destinationItem.slot = origin.data('slot')
+                    destinationItem.slot = origin.data('slot');
                     originItem.slot = destination.data('slot');
 
                     ResetSlotToEmpty(origin);
@@ -556,9 +677,14 @@ function AttemptDropInOccupiedSlot(origin, destination, moveQty) {
                     $.post("http://disc-inventoryhud/SwapItems", JSON.stringify({
                         originOwner: origin.parent().data('invOwner'),
                         originItem: origin.find('.item').data('item'),
+                        originSlot: origin.data('slot'),
+                        originTier: origin.parent().data('invTier'),
                         destinationOwner: destination.parent().data('invOwner'),
                         destinationItem: destination.find('.item').data('item'),
+                        destinationSlot: destination.data('slot'),
+                        destinationTier: destination.parent().data('invTier'),
                     }));
+                    LockInventory();
                 } else if (originItem.qty + destinationItem.qty <= destinationItem.max) {
                     ResetSlotToEmpty(origin);
                     destinationItem.qty += originItem.qty;
@@ -578,6 +704,7 @@ function AttemptDropInOccupiedSlot(origin, destination, moveQty) {
                         destinationTier: destination.parent().data('invTier'),
                         destinationItem: destinationItem,
                     }));
+                    LockInventory();
                 } else if (destinationItem.qty < destinationItem.max) {
                     var newOrigQty = destinationItem.max - destinationItem.qty;
                     originItem.qty -= newOrigQty;
@@ -587,24 +714,27 @@ function AttemptDropInOccupiedSlot(origin, destination, moveQty) {
 
                     successAudio.play();
 
-                    InventoryLog('Adding ' + originItem.label + ' To Existing Stack In Inventory ' + destination.parent().data('invOwner') + ' Slot ' + destinationItem.slot);
+                    InventoryLog('Topping Off Stack ' + originItem.label + ' To Existing Stack In Inventory ' + destination.parent().data('invOwner') + ' Slot ' + destinationItem.slot);
                     $.post("http://disc-inventoryhud/TopoffStack", JSON.stringify({
                         originOwner: origin.parent().data('invOwner'),
-                        originItem: origin.find('.item').data('item'),
-                        originSlot: originItem.slot,
+                        originSlot: origin.data('slot'),
                         originTier: origin.parent().data('invTier'),
+                        originItem: originItem,
+                        originQty: originItem.qty,
                         destinationOwner: destination.parent().data('invOwner'),
-                        destinationItem: destination.find('.item').data('item'),
                         destinationSlot: destinationItem.slot,
+                        destinationQty: destinationItem.qty,
                         destinationTier: destination.parent().data('invTier'),
+                        destinationItem: destinationItem,
                     }));
+                    LockInventory();
                 } else {
                     DisplayMoveError(origin, destination, "Stack At Max Items");
                 }
             }
 
         } else {
-            destinationItem.slot = origin.data('slot')
+            destinationItem.slot = origin.data('slot');
             originItem.slot = destination.data('slot');
 
             ResetSlotToEmpty(origin);
@@ -625,6 +755,7 @@ function AttemptDropInOccupiedSlot(origin, destination, moveQty) {
                 destinationSlot: destination.data('slot'),
                 destinationTier: destination.parent().data('invTier'),
             }));
+            LockInventory();
         }
 
         let originInv = origin.parent().data('invOwner');
@@ -685,37 +816,6 @@ function AddItemToSlot(slot, data) {
     slot.find('.item').data('item', data);
 }
 
-$.widget('ui.dialog', $.ui.dialog, {
-    options: {
-        // Determine if clicking outside the dialog shall close it
-        clickOutside: false,
-        // Element (id or class) that triggers the dialog opening 
-        clickOutsideTrigger: ''
-    },
-    open: function () {
-        var clickOutsideTriggerEl = $(this.options.clickOutsideTrigger),
-            that = this;
-        if (this.options.clickOutside) {
-            // Add document wide click handler for the current dialog namespace
-            $(document).on('click.ui.dialogClickOutside' + that.eventNamespace, function (event) {
-                var $target = $(event.target);
-                if ($target.closest($(clickOutsideTriggerEl)).length === 0 &&
-                    $target.closest($(that.uiDialog)).length === 0) {
-                    that.close();
-                }
-            });
-        }
-        // Invoke parent open method
-        this._super();
-    },
-    close: function () {
-        // Remove document wide click handler for the current dialog
-        $(document).off('click.ui.dialogClickOutside' + this.eventNamespace);
-        // Invoke parent close method 
-        this._super();
-    },
-});
-
 function ClearLog() {
     $('.inv-log').html('');
 }
@@ -737,4 +837,161 @@ function DisplayMoveError(origin, destination, error) {
     }, 1000);
 
     InventoryLog(error);
+}
+
+$('.exit-popup').on('click', function () {
+    givingItem = null;
+    $('.near-players-wrapper').fadeOut('normal').promise().then(function () {
+        $(this).find('.popup-body').html('');
+    });
+});
+
+$('.popup-body').on('click', '.player', function () {
+
+    let target = $(this).data('id');
+    let action = $(this).data('action');
+    let count = parseInt($("#count").val());
+    if (action === "nearPlayersGive") {
+
+        if (givingItem != null) {
+            if (count === 0 || count > givingItem.qty) {
+                count = givingItem.qty
+            }
+            InventoryLog(`Giving ${count} ${givingItem.label} To Nearby Player With Server ID ${target}`);
+            $.post("http://disc-inventoryhud/GiveItem", JSON.stringify({
+                target: target,
+                originItem: givingItem,
+                count: count
+            }), function (status) {
+                if (status) {
+                    $('.near-players-wrapper').fadeOut();
+
+                    if (count == givingItem.qty) {
+                        ResetSlotToEmpty(givingItem.slot);
+                    }
+
+                    givingItem = null;
+                }
+            });
+        }
+    } else if (action === "nearPlayersPay") {
+        InventoryLog(`Giving ${count} ${givingItem} To Nearby Player With Server ID ${target}`);
+        $.post("http://disc-inventoryhud/GiveCash", JSON.stringify({
+            target: target,
+            item: givingItem,
+            count: count
+        }), function (status) {
+            if (status) {
+                $('.near-players-wrapper').fadeOut();
+            }
+        });
+    }
+});
+
+var alertTimer = null;
+
+function ItemUsed(alerts) {
+    clearTimeout(alertTimer);
+    $('#use-alert').hide('slide', {direction: 'left'}, 500, function () {
+        $('#use-alert .slot').remove();
+
+        $.each(alerts, function (index, data) {
+            $('#use-alert').append(`<div class="slot alert-${index}""><div class="item"><div class="item-count">${data.qty}</div><div class="item-name">${data.item.label}</div></div><div class="alert-text">${data.message}</div></div>`)
+                .ready(function () {
+                    $(`.alert-${index}`).find('.item').css('background-image', 'url(\'img/items/' + data.item.itemId + '.png\')');
+                    if (data.item.slot <= 5) {
+                        $(`.alert-${index}`).find('.item').append(`<div class="item-keybind">${data.item.slot}</div>`)
+                    }
+                });
+        });
+    });
+
+    $('#use-alert').show('slide', {direction: 'left'}, 500, function () {
+        alertTimer = setTimeout(function () {
+            $('#use-alert .slot').addClass('expired');
+            $('#use-alert').hide('slide', {direction: 'left'}, 500, function () {
+                $('#use-alert .slot.expired').remove();
+            });
+        }, 2500);
+    });
+}
+
+var actionBarTimer = null;
+
+function ActionBar(items, timer) {
+    if ($('#action-bar').is(':visible')) {
+        clearTimeout(actionBarTimer);
+
+        for (let i = 0; i < 5; i++) {
+            $('#action-bar .slot').removeClass('expired');
+            if (items[i] != null) {
+                $(`.slot-${i}`).find('.item-count').html(items[i].qty);
+                $(`.slot-${i}`).find('.item-name').html(items[i].label);
+                $(`.slot-${i}`).find('.item-keybind').html(items[i].slot);
+                $(`.slot-${i}`).find('.item').css('background-image', 'url(\'img/items/' + items[i].itemId + '.png\')');
+            } else {
+                $(`.slot-${i}`).find('.item-count').html('');
+                $(`.slot-${i}`).find('.item-name').html('NONE');
+                $(`.slot-${i}`).find('.item-keybind').html(i + 1);
+                $(`.slot-${i}`).find('.item').css('background-image', 'none');
+            }
+
+            actionBarTimer = setTimeout(function () {
+                $('#action-bar .slot').addClass('expired');
+                $('#action-bar').hide('slide', {direction: 'down'}, 500, function () {
+                    $('#action-bar .slot.expired').remove();
+                });
+            }, timer == null ? 2500 : timer);
+        }
+    } else {
+        $('#action-bar').html('');
+        for (let i = 0; i < 5; i++) {
+            if (items[i] != null) {
+                $('#action-bar').append(`<div class="slot slot-${i}"><div class="item"><div class="item-count">${items[i].qty}</div><div class="item-name">${items[i].label}</div><div class="item-keybind">${items[i].slot}</div></div></div>`);
+                $(`.slot-${i}`).find('.item').css('background-image', 'url(\'img/items/' + items[i].itemId + '.png\')');
+            } else {
+                $('#action-bar').append(`<div class="slot slot-${i}" data-empty="true"><div class="item"><div class="item-count"></div><div class="item-name">NONE</div><div class="item-keybind">${i + 1}</div></div></div>`);
+                $(`.slot-${i}`).find('.item').css('background-image', 'none');
+            }
+        }
+
+        $('#action-bar').show('slide', {direction: 'down'}, 500, function () {
+            actionBarTimer = setTimeout(function () {
+                $('#action-bar .slot').addClass('expired');
+                $('#action-bar').hide('slide', {direction: 'down'}, 500, function () {
+                    $('#action-bar .slot.expired').remove();
+                });
+            }, timer == null ? 2500 : timer);
+        });
+    }
+}
+
+var usedActionTimer = null;
+
+function ActionBarUsed(index) {
+    clearTimeout(usedActionTimer);
+
+    if ($('#action-bar .slot').is(':visible')) {
+        if ($(`.slot-${index - 1}`).data('empty') != null) {
+            $(`.slot-${index - 1}`).addClass('empty-used');
+        } else {
+            $(`.slot-${index - 1}`).addClass('used');
+        }
+        usedActionTimer = setTimeout(function () {
+            $(`.slot-${index - 1}`).removeClass('used');
+            $(`.slot-${index - 1}`).removeClass('empty-used');
+        }, 1000)
+    }
+}
+
+function LockInventory() {
+    locked = true;
+    $('#inventoryOne').addClass('disabled');
+    $('#inventoryTwo').addClass('disabled');
+}
+
+function UnlockInventory() {
+    locked = false;
+    $('#inventoryOne').removeClass('disabled');
+    $('#inventoryTwo').removeClass('disabled');
 }
